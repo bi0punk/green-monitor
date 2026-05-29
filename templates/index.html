@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoreo de Crecimiento por ROI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div>
+        <h1>Monitoreo de crecimiento vegetal</h1>
+        <p class="subtitle">Streaming en vivo + análisis del ROI + histórico con gráfico en la misma interfaz</p>
+      </div>
+      <div class="top-actions">
+        <button id="btn-refresh-roi-frame" class="btn secondary">Capturar frame para ROI</button>
+        <button id="btn-reset-baseline" class="btn primary">Recalibrar baseline</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel video-panel">
+        <div class="panel-header">
+          <h2>Stream en tiempo real con contornos</h2>
+          <span class="badge" id="source-mode">--</span>
+        </div>
+        <div class="video-wrapper">
+          <img id="video-stream" src="/video_feed" alt="video stream">
+        </div>
+        <p class="video-legend">Los contornos y el relleno verde translúcido muestran dónde el sistema detecta crecimiento vegetal dentro del ROI en tiempo real.</p>
+      </section>
+
+      <aside class="panel side-panel">
+        <div class="metric-block metric-highlight">
+          <span class="label">Crecimiento vs baseline</span>
+          <span class="value" id="growth-pct">0.00%</span>
+          <span class="hint">Parte en 0% al recalibrar y sube cuando la cobertura verde aumenta dentro del ROI.</span>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-block">
+            <span class="label">Cobertura verde ROI</span>
+            <span class="value small" id="green-coverage">0.00%</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Baseline verde</span>
+            <span class="value small" id="baseline-coverage">0.00%</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Píxeles verdes</span>
+            <span class="value small" id="green-pixels">0</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Área ROI</span>
+            <span class="value small" id="roi-area">0</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Blobs verdes</span>
+            <span class="value small" id="green-blobs">0</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Blob mayor (px²)</span>
+            <span class="value small" id="largest-blob-area">0</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Histórico cada</span>
+            <span class="value small" id="history-save-minutes">-- min</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Pico actual ventana</span>
+            <span class="value small" id="history-current-window-peak">0.00%</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Último máximo guardado</span>
+            <span class="value small" id="history-last-peak-growth">0.00%</span>
+          </div>
+          <div class="metric-block">
+            <span class="label">Última lectura</span>
+            <span class="value small" id="timestamp">--</span>
+          </div>
+        </div>
+
+        <div class="panel nested compact-panel">
+          <h3>Estado</h3>
+          <ul class="status-list">
+            <li>ROI cargado: <strong id="roi-ready">No</strong></li>
+            <li>Baseline listo: <strong id="baseline-ready">No</strong></li>
+            <li>Resolución: <strong id="frame-size">--</strong></li>
+            <li>Último guardado histórico: <strong id="history-last-saved-at">--</strong></li>
+            <li>CSV histórico: <strong><a href="/api/history.csv" target="_blank" rel="noopener">abrir</a></strong></li>
+          </ul>
+          <div class="alert" id="error-box">Sin errores</div>
+        </div>
+      </aside>
+    </main>
+
+    <section class="panel chart-panel">
+      <div class="panel-header chart-header">
+        <div>
+          <h2>Histórico de crecimiento</h2>
+          <p class="helper-text chart-helper">Se grafica el máximo guardado por ventana temporal. Verde = crecimiento vs baseline. Azul = cobertura verde máxima.</p>
+        </div>
+        <div class="chart-meta">
+          <span class="mini-stat">Puntos históricos: <strong id="history-point-count">0</strong></span>
+          <span class="mini-stat">Ventana actual: <strong id="history-window-range">--</strong></span>
+        </div>
+      </div>
+
+      <div class="chart-cards">
+        <div class="mini-card">
+          <span class="label">Último pico guardado</span>
+          <strong id="chart-last-saved-growth">0.00%</strong>
+        </div>
+        <div class="mini-card">
+          <span class="label">Última cobertura guardada</span>
+          <strong id="chart-last-saved-coverage">0.00%</strong>
+        </div>
+        <div class="mini-card">
+          <span class="label">Pico ventana actual</span>
+          <strong id="chart-current-window-growth">0.00%</strong>
+        </div>
+        <div class="mini-card">
+          <span class="label">Cobertura ventana actual</span>
+          <strong id="chart-current-window-coverage">0.00%</strong>
+        </div>
+      </div>
+
+      <div class="chart-shell">
+        <canvas id="history-chart"></canvas>
+      </div>
+      <div class="chart-legend">
+        <span><i class="legend-dot growth"></i>Crecimiento vs baseline</span>
+        <span><i class="legend-dot coverage"></i>Cobertura verde máxima</span>
+      </div>
+      <div class="chart-empty" id="history-empty-state">Todavía no hay suficientes puntos guardados en el histórico.</div>
+    </section>
+
+    <section class="panel roi-panel">
+      <div class="panel-header">
+        <h2>Editor de ROI poligonal</h2>
+        <div class="roi-actions">
+          <button id="btn-undo" class="btn secondary">Deshacer punto</button>
+          <button id="btn-clear" class="btn secondary">Limpiar</button>
+          <button id="btn-save-roi" class="btn primary">Guardar ROI</button>
+        </div>
+      </div>
+      <p class="helper-text">
+        Haz clic sobre la imagen para dibujar el polígono del área que quieres analizar. Al guardar, el sistema recalibra el baseline con el frame actual para que el crecimiento parta desde 0%.
+      </p>
+      <div class="canvas-wrapper">
+        <canvas id="roi-canvas"></canvas>
+      </div>
+      <div class="roi-footer">
+        <span>Puntos seleccionados: <strong id="point-count">0</strong></span>
+        <span id="roi-save-status">ROI no guardado todavía</span>
+      </div>
+    </section>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

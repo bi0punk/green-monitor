@@ -1,0 +1,18 @@
+{
+  "bucket_start_epoch": 1772444400,
+  "bucket_end_epoch": 1772444700,
+  "bucket_start": "2026-03-02 06:40:00",
+  "bucket_end": "2026-03-02 06:45:00",
+  "peak_timestamp": "2026-03-02 06:44:32",
+  "peak_growth_pct": 0.0,
+  "peak_green_coverage_pct": 0.9596,
+  "baseline_green_pct": 0.9596,
+  "green_pixels": 1880,
+  "roi_area_px": 195917,
+  "green_blobs": 28,
+  "largest_blob_area": 220.5,
+  "source_mode": "image",
+  "roi_ready": true,
+  "baseline_ready": true,
+  "saved_at": "2026-03-02 06:45:00"
+}
