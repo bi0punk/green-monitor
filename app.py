@@ -249,11 +249,12 @@ class StreamAnalyzer:
         ok, frame = self.capture.read()
         if not ok or frame is None:
             self.last_error = "Fallo de lectura del stream, reintentando..."
-            try:
-                self.capture.release()
-            except Exception:
-                pass
-            self.capture = self._open_capture()
+            with self.lock:
+                try:
+                    self.capture.release()
+                except Exception:
+                    pass
+                self.capture = self._open_capture()
             return None
         return frame
 
