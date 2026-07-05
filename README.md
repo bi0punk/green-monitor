@@ -1,117 +1,188 @@
-# Web app de crecimiento vegetal por ROI
+# Green Monitor — Crecimiento vegetal por ROI
 
-App Flask para mostrar streaming MJPEG y calcular crecimiento basado en el aumento de verde **solo dentro de un ROI poligonal**.
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.1%2B-000000?logo=flask)](https://flask.palletsprojects.com/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.10%2B-5C3EE8?logo=opencv)](https://opencv.org/)
+[![CI](https://github.com/drbash/green-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/drbash/green-monitor/actions)
 
-## Qué mide
+Web app Flask para monitorear crecimiento vegetal mediante análisis de cobertura verde en un ROI poligonal, desde streaming MJPEG o imágenes fijas.
 
-La app calcula:
+## Contenido
 
-- **Cobertura verde ROI (%)**: porcentaje del ROI que hoy contiene píxeles verdes.
-- **Baseline verde (%)**: valor de referencia inicial.
-- **Crecimiento vs baseline (%)**: `max(0, cobertura_actual - baseline)`.
+- [Características](#caracter%C3%ADsticas)
+- [Stack](#stack)
+- [Estructura](#estructura)
+- [Requisitos](#requisitos)
+- [Instalación](#instalaci%C3%B3n)
+- [Uso](#uso)
+- [API](#api)
+- [Tests](#tests)
+- [Configuración](#configuraci%C3%B3n)
+- [CI/CD](#cicd)
+- [Datos](#datos)
+- [Nota técnica](#nota-t%C3%A9cnica)
+- [Limitaciones / Roadmap](#limitaciones--roadmap)
+- [Licencia](#licencia)
 
-Con esto, si calibras el baseline cuando todavía no hay brotes, el valor partirá cerca de **0%** y subirá a medida que aparezca más verde.
+## Características
 
-## Funcionalidades
+- **Stream MJPEG** con overlay de ROI y métricas
+- **Dibujo de ROI poligonal** desde el navegador
+- **Cobertura verde ROI (%)**: píxeles verdes dentro del polígono
+- **Baseline automático**: calibración inicial al guardar ROI
+- **Crecimiento vs baseline**: `max(0, cobertura_actual - baseline)`
+- **Histórico automático**: guarda el máximo crecimiento por ventana temporal
+- **Gráfico histórico** embebido en la interfaz web
+- **Fallback a imagen fija** para demo sin cámara
+- **Fuentes**: RTSP, cámara USB o imagen estática
 
-- Stream MJPEG con overlay.
-- Dibujo del ROI poligonal desde el navegador.
-- Guardado de ROI en JSON.
-- Recalibración manual de baseline.
-- Guardado automático del máximo de crecimiento por ventana temporal.
-- Gráfico histórico embebido en la misma interfaz web.
-- Fallback a imagen fija para demo o pruebas.
-- **Histórico automático**: cada `N` minutos guarda el **máximo crecimiento detectado** dentro de esa ventana.
+## Stack
+
+| Componente | Tecnología |
+|---|---|
+| Backend | Python 3.11+, Flask 3.1+ |
+| Visión | OpenCV 4.10+, NumPy |
+| Frontend | HTML5, CSS3, JavaScript |
+| Testing | pytest |
+
+## Estructura
+
+```
+green-monitor/
+├── app.py                  # Aplicación Flask principal
+├── static/
+│   ├── app.js              # Lógica frontend
+│   └── styles.css
+├── templates/
+│   └── index.html          # Interfaz web
+├── data/                   # Datos persistentes
+│   ├── roi_polygon.json
+│   ├── app_state.json
+│   ├── growth_history.csv
+│   ├── history_latest.json
+│   └── history_window.json
+├── tests/
+├── .env.example
+├── .github/workflows/ci.yml
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+```
+
+## Requisitos
+
+- Python 3.11+
+- Cámara RTSP / USB o imagen estática para demo
+- Navegador moderno
 
 ## Instalación
 
 ```bash
-cd crop_growth_app
+git clone https://github.com/drbash/green-monitor.git
+cd green-monitor
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Ejecución rápida con imagen fija
+## Uso
+
+### Ejecución rápida con imagen fija
 
 ```bash
 python app.py
 ```
 
-Abrir en navegador:
+Abrir en navegador: [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-```text
-http://127.0.0.1:8000
-```
-
-## Usar cámara RTSP
+### Usar cámara RTSP
 
 ```bash
 export STREAM_SOURCE='rtsp://usuario:clave@IP:554/Streaming/Channels/101'
 python app.py
 ```
 
-## Usar cámara USB local
+### Usar cámara USB local
 
 ```bash
 export STREAM_SOURCE='0'
 python app.py
 ```
 
-## Ajustar guardado histórico
+### Flujo recomendado
 
-Por defecto la app guarda el pico cada **5 minutos**.
+1. Abrir la app y pulsar **Capturar frame para ROI**
+2. Dibujar el polígono sobre la bandeja
+3. Pulsar **Guardar ROI** (el sistema recalibra el baseline)
+4. Al aparecer brotes verdes, el crecimiento empezará a subir
+5. La app guarda el valor máximo de crecimiento por ventana temporal
+
+## API
+
+| Ruta | Descripción |
+|---|---|
+| `/` | Interfaz web |
+| `/video_feed` | Stream MJPEG |
+| `/api/status` | Métricas actuales (JSON) |
+| `/api/history/latest` | Último guardado + ventana actual |
+| `/api/history.csv` | CSV histórico descargable |
+
+## Tests
 
 ```bash
-export HISTORY_SAVE_MINUTES='5'
-python app.py
+pip install pytest
+pytest tests/ -v
 ```
 
-Si quieres más frecuencia, por ejemplo cada 1 minuto:
+## Configuración
 
-```bash
-export HISTORY_SAVE_MINUTES='1'
-python app.py
-```
+Variables de entorno (ver `.env.example`):
 
-## Flujo recomendado
+| Variable | Default | Descripción |
+|---|---|---|
+| `STREAM_SOURCE` | `data/sample_baseline.png` | Fuente de video (RTSP, USB o archivo) |
+| `HISTORY_SAVE_MINUTES` | `5` | Intervalo de guardado histórico |
+| `FRAME_WAIT` | `0.2` | Segundos entre frames |
+| `AUTO_BASELINE_ON_START` | `1` | Calibrar baseline al iniciar |
+| `MIN_CONTOUR_AREA` | `10` | Área mínima de contorno verde |
+| `CONTOUR_FILL_ALPHA` | `0.35` | Opacidad del overlay de contornos |
 
-1. Abrir la app.
-2. Pulsar **Capturar frame para ROI**.
-3. Dibujar el polígono sobre la bandeja.
-4. Pulsar **Guardar ROI**.
-5. El sistema recalibra el baseline con el frame actual.
-6. Cuando aparezcan brotes verdes, el crecimiento empezará a subir.
-7. La app irá guardando en histórico el **valor máximo** de crecimiento de cada ventana temporal.
+## CI/CD
 
-## Archivos persistentes
+GitHub Actions ejecuta lint (Ruff) y tests (pytest) en cada push/PR.
 
-- `data/roi_polygon.json`: ROI poligonal.
-- `data/app_state.json`: baseline guardado.
-- `data/growth_history.csv`: histórico consolidado por ventanas.
-- `data/history_latest.json`: último registro ya guardado.
-- `data/history_window.json`: pico temporal de la ventana actual en curso.
+## Datos
 
-## Endpoints útiles
+Archivos persistentes en `data/`:
 
-- `/api/status`: métricas actuales.
-- `/api/history/latest`: resumen del último guardado y la ventana actual.
-- `/api/history.csv`: abre o descarga el CSV histórico.
+- `roi_polygon.json` — Polígono ROI
+- `app_state.json` — Baseline guardado
+- `growth_history.csv` — Histórico consolidado por ventanas
+- `history_latest.json` — Último registro guardado
+- `history_window.json` — Pico de la ventana actual
 
 ## Nota técnica
 
-La detección usa una combinación de:
+La detección de verde usa combinación de:
 
-- umbral de verde en HSV,
-- índice `ExG = 2G - R - B`,
-- limpieza morfológica,
-- exclusión básica de reflejos muy brillantes.
+- Umbral HSV + índice ExG (`2G - R - B`)
+- Limpieza morfológica
+- Exclusión de reflejos brillantes
 
-El histórico guarda el **mejor valor de `growth_pct`** de cada ventana. Si hay empate, se queda con la lectura de mayor cobertura verde / más píxeles verdes.
+El histórico guarda el mejor `growth_pct` de cada ventana; en empate, prioriza mayor cobertura verde.
 
-Es un MVP práctico. Para producción más robusta convendría agregar:
+## Limitaciones / Roadmap
 
-- normalización de iluminación,
-- análisis por alveolo/celda,
-- confirmación temporal en N frames,
-- y eventualmente un modelo de segmentación entrenado.
+- [x] Detección de verde con umbral HSV + ExG
+- [x] ROI poligonal interactivo
+- [x] Histórico por ventanas temporales
+- [ ] Normalización de iluminación
+- [ ] Análisis por alveolo/celda
+- [ ] Confirmación temporal en N frames
+- [ ] Modelo de segmentación entrenado (deep learning)
+- [ ] Notificaciones push al superar umbral
+
+## Licencia
+
+MIT
