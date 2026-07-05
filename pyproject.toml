@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "green-monitor"
+version = "1.0.0"
+description = "Flask web app for monitoring plant growth via ROI green coverage analysis from MJPEG streams or static images."
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1",
+    "opencv-python>=4.10",
+    "numpy>=2.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
