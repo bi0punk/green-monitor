@@ -1,28 +1,27 @@
-# Green Monitor — Crecimiento vegetal por ROI
-
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python)](https://python.org)
-[![Flask](https://img.shields.io/badge/Flask-3.1%2B-000000?logo=flask)](https://flask.palletsprojects.com/)
-[![OpenCV](https://img.shields.io/badge/OpenCV-4.10%2B-5C3EE8?logo=opencv)](https://opencv.org/)
-[![CI](https://github.com/drbash/green-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/drbash/green-monitor/actions)
+# green-monitor
 
 Web app Flask para monitorear crecimiento vegetal mediante análisis de cobertura verde en un ROI poligonal, desde streaming MJPEG o imágenes fijas.
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.1%2B-000000?logo=flask)](https://flask.palletsprojects.com/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.10%2B-5C3EE8?logo=opencv)](https://opencv.org/)
+[![CI](https://github.com/bi0punk/green-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/bi0punk/green-monitor/actions)
+[![Licencia](https://img.shields.io/badge/Licencia-MIT-yellow)](LICENSE)
+
 ## Contenido
 
-- [Características](#caracter%C3%ADsticas)
+- [Características](#características)
+- [Arquitectura](#arquitectura)
 - [Stack](#stack)
-- [Estructura](#estructura)
-- [Requisitos](#requisitos)
-- [Instalación](#instalaci%C3%B3n)
+- [Estructura del repositorio](#estructura-del-repositorio)
+- [Instalación](#instalación)
 - [Uso](#uso)
 - [API](#api)
-- [Tests](#tests)
-- [Configuración](#configuraci%C3%B3n)
-- [CI/CD](#cicd)
+- [Configuración](#configuración)
 - [Datos](#datos)
-- [Nota técnica](#nota-t%C3%A9cnica)
-- [Limitaciones / Roadmap](#limitaciones--roadmap)
+- [Nota técnica](#nota-técnica)
+- [Tests / CI](#tests--ci)
+- [Roadmap](#roadmap)
 - [Licencia](#licencia)
 
 ## Características
@@ -37,6 +36,27 @@ Web app Flask para monitorear crecimiento vegetal mediante análisis de cobertur
 - **Fallback a imagen fija** para demo sin cámara
 - **Fuentes**: RTSP, cámara USB o imagen estática
 
+## Arquitectura
+
+```mermaid
+flowchart TD
+  SRC[Fuente: RTSP / USB / imagen] --> GRAB[StreamAnalyzer: thread captura]
+  GRAB --> MASK[Máscara verde HSV + índice ExG]
+  MASK --> ROI[Recorte por ROI poligonal]
+  ROI --> MET[coverage % / growth vs baseline]
+  MET --> OVER[Overlay con métricas y contornos]
+  OVER --> MJPEG[/video_feed MJPEG/]
+  NAV[Navegador] -->|dibuja ROI| API_ROI[POST /api/roi]
+  API_ROI --> BASELINE[Calibra baseline + resetea ventana]
+  MET --> HIST[Histórico por ventanas temporales]
+  HIST --> CSV[data/growth_history.csv]
+  HIST --> APIH[GET /api/history*]
+  NAV -->|consume| APIH
+  NAV -->|renderiza| MJPEG
+```
+
+Flujo: `StreamAnalyzer` captura frames en un thread, detecta cobertura verde, calcula crecimiento contra el baseline y emite overlay MJPEG; las métricas van al histórico por ventanas (persistido en CSV/JSON) y el navegador permite definir el ROI.
+
 ## Stack
 
 | Componente | Tecnología |
@@ -46,7 +66,7 @@ Web app Flask para monitorear crecimiento vegetal mediante análisis de cobertur
 | Frontend | HTML5, CSS3, JavaScript |
 | Testing | pytest |
 
-## Estructura
+## Estructura del repositorio
 
 ```
 green-monitor/
@@ -70,16 +90,12 @@ green-monitor/
 └── README.md
 ```
 
-## Requisitos
-
-- Python 3.11+
-- Cámara RTSP / USB o imagen estática para demo
-- Navegador moderno
-
 ## Instalación
 
+Requisitos: Python 3.11+, cámara RTSP/USB o imagen estática para demo, navegador moderno.
+
 ```bash
-git clone https://github.com/drbash/green-monitor.git
+git clone https://github.com/bi0punk/green-monitor.git
 cd green-monitor
 python3 -m venv .venv
 source .venv/bin/activate
@@ -128,13 +144,6 @@ python app.py
 | `/api/history/latest` | Último guardado + ventana actual |
 | `/api/history.csv` | CSV histórico descargable |
 
-## Tests
-
-```bash
-pip install pytest
-pytest tests/ -v
-```
-
 ## Configuración
 
 Variables de entorno (ver `.env.example`):
@@ -147,10 +156,6 @@ Variables de entorno (ver `.env.example`):
 | `AUTO_BASELINE_ON_START` | `1` | Calibrar baseline al iniciar |
 | `MIN_CONTOUR_AREA` | `10` | Área mínima de contorno verde |
 | `CONTOUR_FILL_ALPHA` | `0.35` | Opacidad del overlay de contornos |
-
-## CI/CD
-
-GitHub Actions ejecuta lint (Ruff) y tests (pytest) en cada push/PR.
 
 ## Datos
 
@@ -172,7 +177,16 @@ La detección de verde usa combinación de:
 
 El histórico guarda el mejor `growth_pct` de cada ventana; en empate, prioriza mayor cobertura verde.
 
-## Limitaciones / Roadmap
+## Tests / CI
+
+CI: GitHub Actions ejecuta lint (Ruff) y tests (pytest) en cada push/PR.
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+## Roadmap
 
 - [x] Detección de verde con umbral HSV + ExG
 - [x] ROI poligonal interactivo
@@ -185,4 +199,4 @@ El histórico guarda el mejor `growth_pct` de cada ventana; en empate, prioriza 
 
 ## Licencia
 
-MIT
+MIT — ver [LICENSE](LICENSE).
