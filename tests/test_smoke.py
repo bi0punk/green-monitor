@@ -1,5 +1,5 @@
 import os
-import subprocess
+import subprocess  # nosec B404
 
 
 def test_readme_exists():
@@ -11,8 +11,7 @@ def test_gitignore_exists():
 
 
 def test_baseline_png_not_tracked():
-    result = subprocess.run(
-        ["git", "ls-files", "data/sample_baseline.png"],
-        capture_output=True, text=True
+    result = subprocess.run(  # nosec B603, B607
+        ["git", "ls-files", "data/sample_baseline.png"], capture_output=True, text=True
     )
     assert result.stdout.strip() == "", f"Binary still tracked: {result.stdout.strip()}"

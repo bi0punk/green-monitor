@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
+import contextlib
 import csv
 import json
 import os
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -41,7 +40,7 @@ HISTORY_SAVE_SECONDS = HISTORY_SAVE_MINUTES * 60
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
-def clamp_point(x: int, y: int, w: int, h: int) -> Tuple[int, int]:
+def clamp_point(x: int, y: int, w: int, h: int) -> tuple[int, int]:
     x = max(0, min(int(x), w - 1))
     y = max(0, min(int(y), h - 1))
     return x, y
@@ -51,33 +50,37 @@ def format_ts(epoch_seconds: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(epoch_seconds))
 
 
-def read_history_rows(csv_path: Path, limit: int = 240) -> List[dict]:
+def read_history_rows(csv_path: Path, limit: int = 240) -> list[dict]:
     if not csv_path.exists() or csv_path.stat().st_size == 0:
         return []
 
-    rows: List[dict] = []
+    rows: list[dict] = []
     try:
         with csv_path.open("r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                rows.append({
-                    "bucket_start_epoch": int(float(row.get("bucket_start_epoch") or 0)),
-                    "bucket_end_epoch": int(float(row.get("bucket_end_epoch") or 0)),
-                    "bucket_start": row.get("bucket_start") or "",
-                    "bucket_end": row.get("bucket_end") or "",
-                    "peak_timestamp": row.get("peak_timestamp") or "",
-                    "peak_growth_pct": float(row.get("peak_growth_pct") or 0.0),
-                    "peak_green_coverage_pct": float(row.get("peak_green_coverage_pct") or 0.0),
-                    "baseline_green_pct": float(row.get("baseline_green_pct") or 0.0),
-                    "green_pixels": int(float(row.get("green_pixels") or 0)),
-                    "roi_area_px": int(float(row.get("roi_area_px") or 0)),
-                    "green_blobs": int(float(row.get("green_blobs") or 0)),
-                    "largest_blob_area": float(row.get("largest_blob_area") or 0.0),
-                    "source_mode": row.get("source_mode") or "",
-                    "roi_ready": str(row.get("roi_ready") or "").lower() in {"1", "true", "yes", "si"},
-                    "baseline_ready": str(row.get("baseline_ready") or "").lower() in {"1", "true", "yes", "si"},
-                    "saved_at": row.get("saved_at") or "",
-                })
+                rows.append(
+                    {
+                        "bucket_start_epoch": int(float(row.get("bucket_start_epoch") or 0)),
+                        "bucket_end_epoch": int(float(row.get("bucket_end_epoch") or 0)),
+                        "bucket_start": row.get("bucket_start") or "",
+                        "bucket_end": row.get("bucket_end") or "",
+                        "peak_timestamp": row.get("peak_timestamp") or "",
+                        "peak_growth_pct": float(row.get("peak_growth_pct") or 0.0),
+                        "peak_green_coverage_pct": float(row.get("peak_green_coverage_pct") or 0.0),
+                        "baseline_green_pct": float(row.get("baseline_green_pct") or 0.0),
+                        "green_pixels": int(float(row.get("green_pixels") or 0)),
+                        "roi_area_px": int(float(row.get("roi_area_px") or 0)),
+                        "green_blobs": int(float(row.get("green_blobs") or 0)),
+                        "largest_blob_area": float(row.get("largest_blob_area") or 0.0),
+                        "source_mode": row.get("source_mode") or "",
+                        "roi_ready": str(row.get("roi_ready") or "").lower()
+                        in {"1", "true", "yes", "si"},
+                        "baseline_ready": str(row.get("baseline_ready") or "").lower()
+                        in {"1", "true", "yes", "si"},
+                        "saved_at": row.get("saved_at") or "",
+                    }
+                )
     except Exception:
         return []
 
@@ -108,20 +111,20 @@ class StreamAnalyzer:
 
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
-        self.capture: Optional[cv2.VideoCapture] = None
-        self.latest_frame: Optional[np.ndarray] = None
-        self.latest_overlay: Optional[np.ndarray] = None
-        self.latest_green_mask: Optional[np.ndarray] = None
-        self.roi_points: List[Tuple[int, int]] = []
-        self.baseline_green_pct: Optional[float] = None
+        self.capture: cv2.VideoCapture | None = None
+        self.latest_frame: np.ndarray | None = None
+        self.latest_overlay: np.ndarray | None = None
+        self.latest_green_mask: np.ndarray | None = None
+        self.roi_points: list[tuple[int, int]] = []
+        self.baseline_green_pct: float | None = None
         self.baseline_ready = False
-        self.last_error: Optional[str] = None
+        self.last_error: str | None = None
         self.source_mode = "unknown"
 
-        self.current_history_bucket_start: Optional[int] = None
-        self.current_history_bucket_end: Optional[int] = None
-        self.current_history_peak: Optional[Dict] = None
-        self.latest_history_saved: Optional[Dict] = None
+        self.current_history_bucket_start: int | None = None
+        self.current_history_bucket_end: int | None = None
+        self.current_history_peak: dict | None = None
+        self.latest_history_saved: dict | None = None
 
         self.latest_metrics = {
             "timestamp": None,
@@ -146,7 +149,7 @@ class StreamAnalyzer:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
-    def _safe_read_json(self, path: Path) -> Optional[dict]:
+    def _safe_read_json(self, path: Path) -> dict | None:
         if not path.exists():
             return None
         try:
@@ -164,7 +167,7 @@ class StreamAnalyzer:
         if not data:
             return
         points = data.get("points", [])
-        parsed: List[Tuple[int, int]] = []
+        parsed: list[tuple[int, int]] = []
         for p in points:
             if isinstance(p, dict):
                 parsed.append((int(p["x"]), int(p["y"])))
@@ -212,13 +215,16 @@ class StreamAnalyzer:
             self.current_history_bucket_end = now_bucket_start + self.history_save_seconds
             self.current_history_peak = window
         else:
-            try:
+            with contextlib.suppress(Exception):
                 self.history_window_path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
-    def _open_capture(self) -> Optional[cv2.VideoCapture]:
-        if Path(self.source).exists() and Path(self.source).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+    def _open_capture(self) -> cv2.VideoCapture | None:
+        if Path(self.source).exists() and Path(self.source).suffix.lower() in {
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+        }:
             self.source_mode = "image"
             return None
 
@@ -236,7 +242,7 @@ class StreamAnalyzer:
             return None
         return cap
 
-    def _get_source_frame(self) -> Optional[np.ndarray]:
+    def _get_source_frame(self) -> np.ndarray | None:
         if self.source_mode == "image":
             img = cv2.imread(str(self.source))
             if img is None:
@@ -250,15 +256,15 @@ class StreamAnalyzer:
         if not ok or frame is None:
             self.last_error = "Fallo de lectura del stream, reintentando..."
             with self.lock:
-                try:
+                with contextlib.suppress(Exception):
                     self.capture.release()
-                except Exception:
-                    pass
                 self.capture = self._open_capture()
             return None
         return frame
 
-    def _create_roi_mask(self, shape: Tuple[int, int, int], points: List[Tuple[int, int]]) -> np.ndarray:
+    def _create_roi_mask(
+        self, shape: tuple[int, int, int], points: list[tuple[int, int]]
+    ) -> np.ndarray:
         h, w = shape[:2]
         if len(points) < 3:
             return np.ones((h, w), dtype=np.uint8) * 255
@@ -275,7 +281,7 @@ class StreamAnalyzer:
         s = hsv[:, :, 1]
         v = hsv[:, :, 2]
 
-        mask_hsv = ((h >= 28) & (h <= 95) & (s >= 25) & (v >= 20))
+        mask_hsv = (h >= 28) & (h <= 95) & (s >= 25) & (v >= 20)
         mask_exg = exg >= 18
         mask = np.where(mask_hsv & mask_exg, 255, 0).astype(np.uint8)
 
@@ -288,7 +294,7 @@ class StreamAnalyzer:
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
         return mask
 
-    def _analyze(self, frame: np.ndarray) -> Tuple[np.ndarray, dict, np.ndarray]:
+    def _analyze(self, frame: np.ndarray) -> tuple[np.ndarray, dict, np.ndarray]:
         roi_mask = self._create_roi_mask(frame.shape, self.roi_points)
         green_mask = self._green_mask(frame)
         green_mask_roi = cv2.bitwise_and(green_mask, roi_mask)
@@ -339,14 +345,46 @@ class StreamAnalyzer:
         overlay = cv2.addWeighted(overlay, 1.0, contour_fill, CONTOUR_FILL_ALPHA, 0)
         largest_blob_area = max(contour_areas) if contour_areas else 0.0
 
-        cv2.putText(overlay, f"Cobertura verde ROI: {green_coverage_pct:.2f}%", (18, 28),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-        cv2.putText(overlay, f"Crecimiento vs baseline: {growth_pct:.2f}%", (18, 58),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 220, 255), 2, cv2.LINE_AA)
-        cv2.putText(overlay, f"Baseline verde: {baseline_green_pct:.2f}%", (18, 88),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(overlay, f"Blobs verdes: {kept}", (18, 118),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(
+            overlay,
+            f"Cobertura verde ROI: {green_coverage_pct:.2f}%",
+            (18, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            overlay,
+            f"Crecimiento vs baseline: {growth_pct:.2f}%",
+            (18, 58),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 220, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            overlay,
+            f"Baseline verde: {baseline_green_pct:.2f}%",
+            (18, 88),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            overlay,
+            f"Blobs verdes: {kept}",
+            (18, 118),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
         metrics = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -390,7 +428,7 @@ class StreamAnalyzer:
             "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
-    def _is_better_history_entry(self, candidate: dict, current: Optional[dict]) -> bool:
+    def _is_better_history_entry(self, candidate: dict, current: dict | None) -> bool:
         if current is None:
             return True
 
@@ -432,7 +470,9 @@ class StreamAnalyzer:
             "baseline_ready",
             "saved_at",
         ]
-        write_header = not self.history_csv_path.exists() or self.history_csv_path.stat().st_size == 0
+        write_header = (
+            not self.history_csv_path.exists() or self.history_csv_path.stat().st_size == 0
+        )
         with self.history_csv_path.open("a", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
@@ -453,19 +493,15 @@ class StreamAnalyzer:
         self.latest_history_saved = row
         self._write_json(self.history_latest_path, row)
         self.current_history_peak = None
-        try:
+        with contextlib.suppress(Exception):
             self.history_window_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
     def _reset_current_history_window(self) -> None:
         self.current_history_bucket_start = None
         self.current_history_bucket_end = None
         self.current_history_peak = None
-        try:
+        with contextlib.suppress(Exception):
             self.history_window_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
     def _update_history(self, metrics: dict) -> None:
         epoch_now = int(time.time())
@@ -494,13 +530,31 @@ class StreamAnalyzer:
             "history_csv_path": str(self.history_csv_path),
             "history_latest_path": str(self.history_latest_path),
             "history_last_saved_at": latest_saved.get("saved_at"),
-            "history_last_peak_growth_pct": round(float(latest_saved.get("peak_growth_pct") or 0.0), 4),
-            "history_last_peak_green_coverage_pct": round(float(latest_saved.get("peak_green_coverage_pct") or 0.0), 4),
+            "history_last_peak_growth_pct": round(
+                float(latest_saved.get("peak_growth_pct") or 0.0), 4
+            ),
+            "history_last_peak_green_coverage_pct": round(
+                float(latest_saved.get("peak_green_coverage_pct") or 0.0), 4
+            ),
             "history_last_bucket_start": latest_saved.get("bucket_start"),
-            "history_current_window_peak_growth_pct": round(float(current_peak.get("peak_growth_pct") or 0.0), 4),
-            "history_current_window_peak_green_coverage_pct": round(float(current_peak.get("peak_green_coverage_pct") or 0.0), 4),
-            "history_current_window_start": current_peak.get("bucket_start") or (format_ts(self.current_history_bucket_start) if self.current_history_bucket_start else None),
-            "history_current_window_end": current_peak.get("bucket_end") or (format_ts(self.current_history_bucket_end) if self.current_history_bucket_end else None),
+            "history_current_window_peak_growth_pct": round(
+                float(current_peak.get("peak_growth_pct") or 0.0), 4
+            ),
+            "history_current_window_peak_green_coverage_pct": round(
+                float(current_peak.get("peak_green_coverage_pct") or 0.0), 4
+            ),
+            "history_current_window_start": current_peak.get("bucket_start")
+            or (
+                format_ts(self.current_history_bucket_start)
+                if self.current_history_bucket_start
+                else None
+            ),
+            "history_current_window_end": current_peak.get("bucket_end")
+            or (
+                format_ts(self.current_history_bucket_end)
+                if self.current_history_bucket_end
+                else None
+            ),
         }
 
     def _decorate_metrics_with_history(self, metrics: dict) -> dict:
@@ -531,9 +585,17 @@ class StreamAnalyzer:
             frame = self.latest_overlay.copy() if self.latest_overlay is not None else None
         if frame is None:
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(frame, "Esperando fuente de video...", (40, 240),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-        ok, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            cv2.putText(
+                frame,
+                "Esperando fuente de video...",
+                (40, 240),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.9,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         return buf.tobytes() if ok else b""
 
     def get_raw_frame_jpeg(self) -> bytes:
@@ -541,14 +603,14 @@ class StreamAnalyzer:
             frame = self.latest_frame.copy() if self.latest_frame is not None else None
         if frame is None:
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        ok, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         return buf.tobytes() if ok else b""
 
     def get_metrics(self) -> dict:
         with self.lock:
             return dict(self.latest_metrics)
 
-    def set_roi(self, points: List[Tuple[int, int]]) -> dict:
+    def set_roi(self, points: list[tuple[int, int]]) -> dict:
         with self.lock:
             if self.latest_frame is None:
                 raise RuntimeError("Aún no hay frame disponible")
@@ -565,7 +627,11 @@ class StreamAnalyzer:
             self._reset_current_history_window()
             _, metrics, _ = self._analyze(self.latest_frame)
             self.latest_metrics = self._decorate_metrics_with_history(metrics)
-            return {"ok": True, "roi_points": self.roi_points, "baseline_green_pct": self.baseline_green_pct}
+            return {
+                "ok": True,
+                "roi_points": self.roi_points,
+                "baseline_green_pct": self.baseline_green_pct,
+            }
 
     def reset_baseline_from_current(self) -> dict:
         with self.lock:
@@ -578,17 +644,25 @@ class StreamAnalyzer:
             self._reset_current_history_window()
             _, metrics, _ = self._analyze(self.latest_frame)
             self.latest_metrics = self._decorate_metrics_with_history(metrics)
-            return {"ok": True, "baseline_green_pct": self.baseline_green_pct, "metrics": self.latest_metrics}
+            return {
+                "ok": True,
+                "baseline_green_pct": self.baseline_green_pct,
+                "metrics": self.latest_metrics,
+            }
 
-    def get_roi_points(self) -> List[Tuple[int, int]]:
+    def get_roi_points(self) -> list[tuple[int, int]]:
         with self.lock:
             return list(self.roi_points)
 
     def get_latest_history(self) -> dict:
         with self.lock:
             return {
-                "latest_saved": dict(self.latest_history_saved) if self.latest_history_saved else None,
-                "current_window": dict(self.current_history_peak) if self.current_history_peak else None,
+                "latest_saved": dict(self.latest_history_saved)
+                if self.latest_history_saved
+                else None,
+                "current_window": dict(self.current_history_peak)
+                if self.current_history_peak
+                else None,
                 "history_save_minutes": int(self.history_save_seconds // 60),
                 "history_csv_path": str(self.history_csv_path),
             }
@@ -615,8 +689,7 @@ def video_feed():
     def generate():
         while True:
             frame = analyzer.get_overlay_jpeg()
-            yield (b"--frame\r\n"
-                   b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
             time.sleep(0.08)
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
@@ -655,14 +728,16 @@ def api_history():
     y_max = max(y_max, float(current_window.get("peak_green_coverage_pct") or 0.0))
     y_max = max(y_max, 1.0)
 
-    return jsonify({
-        "rows": rows,
-        "count": len(rows),
-        "history_save_minutes": int(HISTORY_SAVE_MINUTES),
-        "latest_saved": latest.get("latest_saved"),
-        "current_window": latest.get("current_window"),
-        "y_max": round(float(y_max), 4),
-    })
+    return jsonify(
+        {
+            "rows": rows,
+            "count": len(rows),
+            "history_save_minutes": int(HISTORY_SAVE_MINUTES),
+            "latest_saved": latest.get("latest_saved"),
+            "current_window": latest.get("current_window"),
+            "y_max": round(float(y_max), 4),
+        }
+    )
 
 
 @app.route("/api/history.csv")
@@ -679,7 +754,7 @@ def api_roi():
 
     payload = request.get_json(silent=True) or {}
     raw_points = payload.get("points", [])
-    points: List[Tuple[int, int]] = []
+    points: list[tuple[int, int]] = []
     for p in raw_points:
         if isinstance(p, dict):
             points.append((int(p["x"]), int(p["y"])))
@@ -696,14 +771,16 @@ def api_reset_baseline():
 
 @app.route("/api/config")
 def api_config():
-    return jsonify({
-        "stream_source": STREAM_SOURCE,
-        "roi_json_path": str(ROI_JSON_PATH),
-        "state_json_path": str(STATE_JSON_PATH),
-        "history_csv_path": str(HISTORY_CSV_PATH),
-        "history_save_minutes": HISTORY_SAVE_MINUTES,
-        "source_mode": analyzer.get_metrics().get("source_mode"),
-    })
+    return jsonify(
+        {
+            "stream_source": STREAM_SOURCE,
+            "roi_json_path": str(ROI_JSON_PATH),
+            "state_json_path": str(STATE_JSON_PATH),
+            "history_csv_path": str(HISTORY_CSV_PATH),
+            "history_save_minutes": HISTORY_SAVE_MINUTES,
+            "source_mode": analyzer.get_metrics().get("source_mode"),
+        }
+    )
 
 
 @app.errorhandler(Exception)
@@ -712,7 +789,7 @@ def handle_error(exc):
 
 
 if __name__ == "__main__":
-    host = os.getenv("HOST", "0.0.0.0")
+    host = os.getenv("HOST", "0.0.0.0")  # nosec B104
     port = int(os.getenv("PORT", "8000"))
     debug = os.getenv("DEBUG", "0") == "1"
     app.run(host=host, port=port, debug=debug, threaded=True)
